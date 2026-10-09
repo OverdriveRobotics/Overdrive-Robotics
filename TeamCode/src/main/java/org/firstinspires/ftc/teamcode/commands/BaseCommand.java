@@ -38,5 +38,5 @@ abstract class BaseCommand implements Command {
     @Override public boolean done() { return false; }
     @Override public void end(EndCondition endCondition) {}
 
-    static double nowMs() { return System.nanoTime() / 1e6; }
+    static double nowMs() { return org.firstinspires.ftc.teamcode.hardware.RobotClock.ms(); }
 }

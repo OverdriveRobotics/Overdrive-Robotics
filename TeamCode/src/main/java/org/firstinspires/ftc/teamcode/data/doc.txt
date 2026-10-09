@@ -540,6 +540,3 @@ Command auto = sequential(
         instant(() -> intake.activate())
     )
 );
-
-
-

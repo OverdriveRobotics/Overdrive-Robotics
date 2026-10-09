@@ -1,6 +1,8 @@
 package org.firstinspires.ftc.teamcode.commands;
 
 import com.pedropathing.ivy.Command;
+import com.pedropathing.ivy.Scheduler;
+import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.hardware.RobotHardware;
 import org.firstinspires.ftc.teamcode.hardware.Storage;
@@ -8,17 +10,23 @@ import org.firstinspires.ftc.teamcode.hardware.Storage;
 import java.util.function.BooleanSupplier;
 
 import static com.pedropathing.ivy.commands.Commands.infinite;
+import static com.pedropathing.ivy.groups.Groups.parallel;
+import static com.pedropathing.ivy.pedro.PedroCommands.follow;
 
 /**
  * Factories for reusable robot commands. Each call returns a fresh, independent command.
  *
  * Resource ownership (Ivy requirements):
- *  - spinUpFlywheel / stopFlywheel : flywheel (shooterLeft+shooterRight, keyed on shooterRight)
+ *  - flywheelRegulator (internal)  : flywheel (shooterLeft+shooterRight, keyed on shooterRight) - the ONLY motor writer
+ *  - stopFlywheel                  : flywheel (priority 10, interrupts the regulator)
+ *  - spinUpFlywheel                : none (sets the regulator's target and waits for measured readiness)
+ *  - aimTurret                     : turret motor
  *  - shoot                         : stopper servo + intakeAndTransferMotor (reads the flywheel, never commands it)
  *  - runIntake                     : intakeAndTransferMotor
  *  - drive (Pedro follow/hold)     : none of the above, so it runs in parallel with all of these.
  *
- * Example: parallel(follow(follower, toShootSpot), spinUpFlywheel(robot, 1800)).then(shoot(robot, 3))
+ * Moving shot: see {@link #movingShot}. Background loops (flywheel regulator, aimTurret, readiness monitor) are
+ * scheduled once per OpMode by {@link #startShooterSystems}.
  * In teleop/auto also schedule {@link #flywheelMonitor} so Storage readiness stays fresh between commands.
  */
 public final class RobotCommands {
@@ -44,7 +52,9 @@ public final class RobotCommands {
 
     /** Shoots {@code balls}; requests a spin-up to {@code shootVelocity} first if not already commanded. */
     public static Command shoot(RobotHardware robot, int balls, double shootVelocity) {
-        return new ShootBalls(robot, balls, shootVelocity, RobotConfig.FLYWHEEL_TOLERANCE);
+        // NaN is ShootBalls' internal "use the current target" marker; an explicit NaN here is a caller error.
+        return new ShootBalls(robot, balls, Double.isNaN(shootVelocity) ? Double.NEGATIVE_INFINITY : shootVelocity,
+                RobotConfig.FLYWHEEL_TOLERANCE);
     }
 
     /** Runs the intake in IN or OUT until cancelled. */
@@ -67,5 +77,50 @@ public final class RobotCommands {
             // Only ever downgrades readiness here; promotion to ready requires a stable window (spin-up/shoot).
             if (!FlywheelUtil.inTolerance(v, Storage.flywheelTargetVelocity, tolerance)) Storage.flywheelReady = false;
         });
+    }
+
+    /** Continuous turret aiming at Storage's active target; runs until cancelled. */
+    public static Command aimTurret(RobotHardware robot) { return new AimTurret(robot); }
+
+    /** Schedules the (single) flywheel regulator if it is not already running. Safe to call repeatedly. */
+    public static void ensureFlywheelRegulator(RobotHardware robot) { FlywheelUtil.ensureRegulator(robot); }
+
+    /** Requirement-free background command that re-evaluates {@link ShootStatus} into Storage every loop. */
+    public static Command readinessMonitor(RobotHardware robot) {
+        return infinite(() -> {
+            org.firstinspires.ftc.teamcode.control.ShootingReadiness.Result r =
+                    ShootStatus.evaluate(robot, !Storage.shootInProgress, "shot in progress");
+            Storage.readyToShoot = r.ready;
+            Storage.notReadyReason = r.reason;
+        });
+    }
+
+    /**
+     * Schedules the background loops a moving shot needs: flywheel regulator, turret aiming, readiness monitor.
+     * Call once after {@code Scheduler.reset()} in the OpMode's start(). They own distinct resources, so they
+     * run alongside path following and shooting.
+     */
+    public static void startShooterSystems(RobotHardware robot) {
+        ensureFlywheelRegulator(robot);
+        Scheduler.schedule(aimTurret(robot), readinessMonitor(robot));
+    }
+
+    /** Shoots with a custom window timeout (how long to wait for readiness before each ball). */
+    public static Command shoot(RobotHardware robot, int balls, double shootVelocity, double readyTimeoutMs) {
+        return new ShootBalls(robot, balls, Double.isNaN(shootVelocity) ? Double.NEGATIVE_INFINITY : shootVelocity,
+                RobotConfig.FLYWHEEL_TOLERANCE, readyTimeoutMs);
+    }
+
+    /**
+     * Follows {@code path} while spinning up and shooting: the path is NOT awaited before shooting starts.
+     * ShootBalls requests the flywheel velocity itself and waits (up to {@code windowTimeoutMs} per ball) for the
+     * live readiness window; it finishes when all balls are shot or it times out. The group ends when BOTH the path
+     * and the shooting have ended. Needs {@link #startShooterSystems} running for turret aiming and readiness.
+     */
+    public static Command movingShot(RobotHardware robot, Path path, int balls, double shootVelocity,
+                                     double windowTimeoutMs) {
+        return parallel(
+                follow(robot.follower, path),
+                shoot(robot, balls, shootVelocity, windowTimeoutMs));
     }
 }

@@ -22,10 +22,10 @@ class RunIntake extends BaseCommand {
     private final double power, durationMs;
     private final BooleanSupplier stopWhen;
     private double startMs, jamSinceMs;
-    private boolean finished;
+    private boolean finished, ownsMotor;
 
     RunIntake(RobotHardware robot, Storage.IntakeState mode, double power, double durationMs, BooleanSupplier stopWhen) {
-        super(0, ConflictBehavior.OVERRIDE, robot.intakeAndTransferMotor);
+        super(0, ConflictBehavior.OVERRIDE, Resources.feed(robot));
         this.robot = robot;
         this.mode = mode;
         this.power = power;
@@ -35,6 +35,7 @@ class RunIntake extends BaseCommand {
 
     @Override public void start() {
         finished = false;
+        ownsMotor = false;
         jamSinceMs = -1;
         startMs = nowMs();
         String err = null;
@@ -42,7 +43,7 @@ class RunIntake extends BaseCommand {
         else if (mode != Storage.IntakeState.INTAKING && mode != Storage.IntakeState.REVERSING)
             err = "invalid intake mode " + mode;
         else if (!Double.isFinite(power) || power <= 0 || power > 1) err = "invalid intake power " + power;
-        else if (Double.isNaN(durationMs)) err = "invalid duration";
+        else if (!Double.isFinite(durationMs)) err = "invalid duration " + durationMs;   // <= 0 (finite) = run until cancelled
         else if (Storage.shootInProgress) err = "feed motor owned by shooting";
         if (err != null) {
             finished = true;
@@ -50,6 +51,7 @@ class RunIntake extends BaseCommand {
             return;
         }
         robot.intakeAndTransferMotor.setPower(mode == Storage.IntakeState.INTAKING ? power : -power);
+        ownsMotor = true;
         Storage.intakeState = mode;
     }
 
@@ -78,7 +80,10 @@ class RunIntake extends BaseCommand {
     @Override public boolean done() { return finished; }
 
     @Override public void end(EndCondition endCondition) {
-        if (robot == null || robot.intakeAndTransferMotor == null) return;
+        // A command that never started the motor (validation failure) must not touch it: shooting may own it.
+        if (!ownsMotor || robot == null || robot.intakeAndTransferMotor == null) return;
+        // If shooting took the feed motor from us (we were interrupted by it), it owns the motor and its state now.
+        if (endCondition == EndCondition.INTERRUPTED && Storage.shootInProgress) return;
         robot.intakeAndTransferMotor.setPower(0);
         if (Storage.intakeState != Storage.IntakeState.JAMMED && Storage.intakeState != Storage.IntakeState.FEEDING)
             Storage.intakeState = Storage.IntakeState.IDLE;
