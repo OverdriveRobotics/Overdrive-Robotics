@@ -45,6 +45,7 @@ public class RobotHardware {
      */
     public void init(HardwareMap hwMap, double x, double y, double theta ) {
         this.hardwareMap = hwMap;
+        Storage.invalidateHardwareState();
 
         // 1. Initialize Pedro Pathing
         follower = Constants.create(hardwareMap);
