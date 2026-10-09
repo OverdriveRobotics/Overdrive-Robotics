@@ -16,6 +16,8 @@ public final class RobotTelemetry {
     private static String deg(double rad) { return Double.isFinite(rad) ? f(Math.toDegrees(rad)) : "n/a"; }
 
     public static void add(Telemetry t, RobotHardware robot) {
+        t.addData("config", "rev " + org.firstinspires.ftc.teamcode.tuning.Tuning.activeRevision + " " + org.firstinspires.ftc.teamcode.tuning.Tuning.activeHash);
+        if (!org.firstinspires.ftc.teamcode.tuning.Tuning.loadProblems.isEmpty()) t.addData("CONFIG PROBLEMS (defaults in use)", org.firstinspires.ftc.teamcode.tuning.Tuning.loadProblems);
         Storage.FieldPoint tp = Storage.activeTarget();
         Pose p = robot != null && robot.follower != null ? robot.follower.pose() : null;
         t.addData("target", (Storage.activeTargetIndex == 0 ? "A " : "B ") + tp);

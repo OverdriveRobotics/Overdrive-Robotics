@@ -28,6 +28,8 @@ class FlywheelRegulator extends BaseCommand {
     private FlywheelLqrController lqr;
     private double appliedTarget = -1, inBandSinceMs = -1, lastMs;
     private boolean faultHandled, failedToStart;
+    private double cutUntilMs;
+    private boolean wasCut;
 
     FlywheelRegulator(RobotHardware robot) {
         super(5, ConflictBehavior.CANCEL, FlywheelUtil.flywheelKey(robot));
@@ -96,6 +98,12 @@ class FlywheelRegulator extends BaseCommand {
         double stableFor = inBandSinceMs < 0 ? 0 : now - inBandSinceMs;
         Storage.flywheelStableForMs = stableFor;
         Storage.flywheelReady = target > 0 && stableFor >= Storage.flywheelStableMs;
+
+        // ---- calibration disturbance hook (never active in normal operation) ----
+        double cutMs = Storage.flywheelDisturbanceMs;
+        if (cutMs > 0) { Storage.flywheelDisturbanceMs = 0; cutUntilMs = now + cutMs; }
+        if (now < cutUntilMs) { writePower(0); appliedTarget = -1; wasCut = true; return; }
+        if (wasCut) { wasCut = false; if (lqr != null) lqr.reset(); }
 
         // ---- output ----
         if (lqr != null) {

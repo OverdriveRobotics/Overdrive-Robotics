@@ -39,6 +39,11 @@ public class Storage {
         return true;
     }
 
+    /** Unvalidated write used only by the parameter registry to restore compiled defaults (may be NaN = unset). */
+    public static void setTargetRaw(int index, double x, double y) {
+        if (index == 0) targetA = new FieldPoint(x, y); else targetB = new FieldPoint(x, y);
+    }
+
     /** Selects the active target. Invalid indices are rejected and leave the selection unchanged. */
     public static boolean selectTarget(int index) {
         if (index < 0 || index >= TARGET_COUNT) return false;
@@ -90,6 +95,11 @@ public class Storage {
     public static volatile double flywheelStableForMs = 0;
     public static volatile double flywheelPower = 0;
     public static volatile String flywheelMode = "off";
+    /**
+     * Calibration fault-injection hook: a value &gt; 0 makes the regulator cut flywheel power for that many ms once
+     * (a controlled, safe disturbance). Consumed by the regulator; always 0 in normal operation.
+     */
+    public static volatile double flywheelDisturbanceMs = 0;
 
     public static volatile IntakeState intakeState = IntakeState.IDLE;
 
@@ -134,6 +144,7 @@ public class Storage {
         flywheelStableForMs = 0;
         flywheelPower = 0;
         flywheelMode = "off";
+        flywheelDisturbanceMs = 0;
         intakeState = IntakeState.IDLE;
         shootInProgress = false;
         shootPhase = "IDLE";

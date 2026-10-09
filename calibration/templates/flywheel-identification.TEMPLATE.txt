@@ -1,0 +1,8 @@
+Flywheel identification checklist (NOT a loadable file).
+flywheel.MODEL_IDENTIFIED=1 (LQR instead of the SDK velocity PIDF) is only accepted when, EITHER
+  A) system identification (preferred):  flywheel.USE_SYSID_MODEL=1 with flywheel.KS_VOLTS, KV_VOLTS_PER_TICK_S, KA_VOLTS_PER_TICK_S2
+     all present                                                                  [CAL Flywheel #2 -> Y adopts the suggestions]
+  B) physical model: flywheel.MOTOR_COUNT, SHAFT_FREE_SPEED_RAD_S, SHAFT_STALL_TORQUE_NM, STALL_CURRENT_A, SHAFT_TICKS_PER_REV,
+     SHAFT_REVS_PER_FLYWHEEL_REV, FLYWHEEL_INERTIA_KG_M2, VISCOUS_FRICTION all present  [datasheet + CAD/measurement]
+Then validate: CAL Flywheel #3 (step) and #4 (disturbance) under the CANDIDATE, compare with the SDK-PIDF baseline, and only
+then accept.

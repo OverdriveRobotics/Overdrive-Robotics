@@ -1,8 +1,6 @@
 package org.firstinspires.ftc.teamcode.auto;
 
 import static com.pedropathing.api.Paths.line;
-import static com.pedropathing.ivy.groups.Groups.sequential;
-import static com.pedropathing.ivy.pedro.PedroCommands.hold;
 
 import com.pedropathing.ivy.Scheduler;
 import com.pedropathing.math.Pose;
@@ -11,6 +9,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
+import org.firstinspires.ftc.teamcode.commands.AutoRoutines;
 import org.firstinspires.ftc.teamcode.commands.RobotCommands;
 import org.firstinspires.ftc.teamcode.commands.RobotConfig;
 import org.firstinspires.ftc.teamcode.commands.RobotTelemetry;
@@ -46,9 +45,8 @@ public class MovingShotAutoExample extends OpMode {
     public void start() {
         RobotCommands.startShooterSystems(robot);
         Path toShoot = line(START, SHOOT_END).constant(0);
-        Scheduler.schedule(sequential(
-                RobotCommands.movingShot(robot, toShoot, RobotConfig.MAX_BALLS, RobotConfig.FLYWHEEL_VELOCITY_A, 5000),
-                hold(robot.follower)));
+        Scheduler.schedule(AutoRoutines.shootWhileDriving(
+                robot, toShoot, RobotConfig.MAX_BALLS, RobotConfig.FLYWHEEL_VELOCITY_A, 5000));
     }
 
     @Override

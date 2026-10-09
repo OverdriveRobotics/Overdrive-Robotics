@@ -47,7 +47,7 @@ public final class Lqr {
             double[][] pNext = Matrices.mul(Matrices.sub(Matrices.identity(n), Matrices.mul(l, c)), pPred);
             double change = Matrices.maxAbs(Matrices.sub(pNext, p));
             p = pNext;
-            if (change < 1e-14) return l;
+            if (change < 1e-12 * Math.max(1.0, Matrices.maxAbs(p))) return l;   // relative: variances can be 1e5+
         }
         throw new ArithmeticException("Kalman Riccati did not converge");
     }

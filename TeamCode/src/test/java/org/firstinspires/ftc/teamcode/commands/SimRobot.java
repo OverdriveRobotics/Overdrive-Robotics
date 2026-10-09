@@ -29,24 +29,39 @@ import java.util.function.BooleanSupplier;
  */
 final class SimRobot {
     static final class Motor implements InvocationHandler {
-        double power, velCmd, velocityReading;
+        double power, velCmd, velocityReading, currentAmps;
+        final java.util.List<String> writers = new java.util.ArrayList<>();   // class names that wrote power/velocity
         int velCalls, powerWrites, position;
         Object mode = DcMotor.RunMode.RUN_USING_ENCODER;
+        void noteWriter() { noteWriterInto(writers); }
 
         @Override public Object invoke(Object proxy, java.lang.reflect.Method m, Object[] a) {
             switch (m.getName()) {
-                case "setPower": power = (Double) a[0]; powerWrites++; return null;
+                case "setPower": power = (Double) a[0]; powerWrites++; noteWriter(); if (mode == DcMotor.RunMode.RUN_USING_ENCODER) velCmd = power * 2800; return null;
                 case "getPower": return power;
-                case "setVelocity": if (a.length == 1) { velCmd = (Double) a[0]; velCalls++; } return null;
+                case "setVelocity": if (a.length == 1) { velCmd = (Double) a[0]; velCalls++; noteWriter(); } return null;
                 case "getVelocity": return a == null || a.length == 0 ? velocityReading : 0.0;
                 case "setMode": mode = a[0]; return null;
                 case "getMode": return mode;
                 case "getCurrentPosition": return position;
-                case "getCurrent": return 0.0;
+                case "getCurrent": return power != 0 ? currentAmps : 0.0;
                 case "hashCode": return System.identityHashCode(proxy);
                 case "equals": return proxy == a[0];
                 case "toString": return "Motor";
                 default: return defaultFor(m.getReturnType());
+            }
+        }
+    }
+
+    /** Records which production class called a motor write (first non-test, non-proxy frame). */
+    static void noteWriterInto(java.util.List<String> into) {
+        for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
+            String cn = e.getClassName();
+            if (cn.startsWith("org.firstinspires.ftc.teamcode.") && !cn.contains("SimRobot") && !cn.contains("CommandTests")) {
+                String simple = cn.substring(cn.lastIndexOf('.') + 1);
+                int d = simple.indexOf('$'); if (d > 0) simple = simple.substring(0, d);
+                if (!into.contains(simple)) into.add(simple);
+                return;
             }
         }
     }
@@ -81,14 +96,16 @@ final class SimRobot {
     static class StubFollower extends Follower {
         Pose pose = new Pose(0, 0, 0);
         Velocity vel = new Velocity(0, 0, 0);
-        int updates, followCalls;
+        int updates, followCalls, holdCalls, loopsSinceFollow, followDurationLoops;   // followDurationLoops > 0: path ends by itself
         boolean atEnd;
         StubFollower() { super(null, null, null); }
         @Override public Pose pose() { return pose; }
         @Override public Velocity velocity() { return vel; }
-        @Override public void update() { updates++; }
-        @Override public void follow(Path p) { followCalls++; }
-        @Override public boolean atParametricEnd() { return atEnd; }
+        @Override public void update() { updates++; loopsSinceFollow++; }
+        @Override public void follow(Path p) { followCalls++; loopsSinceFollow = 0; if (followDurationLoops > 0) atEnd = false; }
+        @Override public void hold(Pose p) { holdCalls++; }
+        @Override public void setPose(Pose p) { pose = p; }
+        @Override public boolean atParametricEnd() { return followDurationLoops > 0 ? loopsSinceFollow >= followDurationLoops : atEnd; }
     }
 
     static StubFollower newFollower() {
@@ -114,16 +131,24 @@ final class SimRobot {
 
     // flywheel plant
     double omega;
-    boolean flywheelDead, nanVelocity, stampPose = true;
+    boolean flywheelDead, nanVelocity, nanRightOnly, stampPose = true;
+    double rightOffset;                    // right shooter reads this much more than the left (ticks/s)
     double sdkTau = 0.25, dropPerBall = 250, ballDelay = 0.15;
     int ballsLoaded, shotsFired;
     double plantScale = 1.0;
+    double noiseStd;                       // gaussian velocity-measurement noise (ticks/s), seeded
+    final java.util.Random rng = new java.util.Random(1234);
     private double feedTime;
-    private final FlywheelLqrController.Params fp = FlywheelLqrController.Params.physical();
+    private FlywheelLqrController.Params fp = FlywheelLqrController.Params.physical();
 
     // turret plant
     double theta, thetaDot;
-    private final TurretStateSpaceController.Params tp = TurretStateSpaceController.Params.fromConfig();
+    private TurretStateSpaceController.Params tp = TurretStateSpaceController.Params.fromConfig();
+
+    /** Re-derives the simulated plants from the CURRENT config (call after changing plant-defining parameters). */
+    void refreshPlants() { fp = FlywheelLqrController.Params.physical(); tp = TurretStateSpaceController.Params.fromConfig(); }
+    double flywheelA() { return fp.a; }
+    double flywheelB() { return fp.b; }
 
     SimRobot() {
         robot.shooterLeft = proxy(DcMotorEx.class, shooterL);
@@ -146,6 +171,7 @@ final class SimRobot {
     /** Resets all shared/static state and installs the fake clock. Returns a fresh simulated robot. */
     static SimRobot fresh() {
         Scheduler.reset();
+        org.firstinspires.ftc.teamcode.tuning.ParamRegistry.resetToDefaults();
         Storage.invalidateHardwareState();
         Storage.totalBallsShot = 0;
         Storage.targetA = new Storage.FieldPoint(Double.NaN, Double.NaN);
@@ -171,6 +197,7 @@ final class SimRobot {
         Scheduler.execute();
         physics(ms / 1000.0);
         nanos += ms * 1_000_000L;
+        publishSensors();   // a read right after loop() sees the fresh state, like the real robot after its loop delay
     }
 
     void run(int totalMs) { for (int t = 0; t < totalMs; t += 10) step(10); }
@@ -185,9 +212,9 @@ final class SimRobot {
     }
 
     private void publishSensors() {
-        double reading = nanVelocity ? Double.NaN : omega;
+        double reading = nanVelocity ? Double.NaN : omega + (noiseStd > 0 ? rng.nextGaussian() * noiseStd : 0);
         shooterL.velocityReading = reading;
-        shooterR.velocityReading = reading;
+        shooterR.velocityReading = nanRightOnly ? Double.NaN : reading + rightOffset;
         turretM.position = (int) Math.round(TurretUtil.angleToTicks(theta, TurretConfig.SHAFT_TICKS_PER_REV,
                 TurretConfig.SHAFT_REVS_PER_TURRET_REV, TurretConfig.ENCODER_SIGN, TurretConfig.START_ANGLE_RAD));
         turretM.velocityReading = TurretConfig.ENCODER_SIGN * thetaDot * TurretConfig.SHAFT_REVS_PER_TURRET_REV

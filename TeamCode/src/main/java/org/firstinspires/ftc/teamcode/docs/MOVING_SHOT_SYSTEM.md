@@ -1,5 +1,7 @@
 # Moving-shot system: design, status, calibration
 
+> Testing and tuning framework: see [`calibration/README.md`](../../../../../../../../../calibration/README.md), [`CALIBRATION_GUIDE.md`](CALIBRATION_GUIDE.md) and [`TEST_REPORT.md`](TEST_REPORT.md). The `static final` configuration constants described below are now overridable, sparse, validated parameters ([`PARAMETERS.md`](PARAMETERS.md)).
+
 Status: **implemented, compiled, and verified in simulation only.** Nothing here has run on the robot. The
 turret and flywheel models use **placeholder** hardware numbers (marked `PLACEHOLDER` in the config files);
 both state-space paths are interlocked **off** until those are measured.
@@ -82,8 +84,10 @@ is only the *external* reduction. `theta = start + sign * (ticks - zero) / ticks
 `relative + 2*pi*k` that lies in `[MIN_ANGLE, MAX_ANGLE]` and is nearest the measured angle (or, if `CONTINUOUS`,
 the shortest path). No equivalent in range -> target flagged **unreachable**, no readiness, turret holds. Power
 into a hard limit is cut within `LIMIT_MARGIN_RAD`. The desired-angle rate from robot motion
-`(dy*vx - dx*vy)/(dx^2+dy^2) - omega` is fed forward (verified against a finite difference). ASSUMPTION:
-`follower.velocity()` is in the field frame (`TurretConfig.ROBOT_VELOCITY_IS_FIELD_FRAME`).
+`(dy*vx - dx*vy)/(dx^2+dy^2) - omega` is fed forward (verified against a finite difference). `follower.velocity()` is a field-frame
+velocity: verified in the installed Pedro (`PinpointLocalizer` builds `MotionState.ofVelocity(pose, velocity)` which treats it as field-frame
+and derives the robot-frame `Twist`) and cross-checked against Pedro's own `Twist.toVelocity` in the tests. The raw Pinpoint output is
+confirmed on the robot with `CAL Localization` #1 (`TurretConfig.ROBOT_VELOCITY_IS_FIELD_FRAME`).
 
 **Targets:** `Storage.targetA / targetB` (`FieldPoint`, NaN = unset), `Storage.activeTargetIndex`,
 `Storage.setTarget(i,x,y)`, `selectTarget(i)`, `toggleTarget()`. Invalid indices/coordinates are rejected and leave

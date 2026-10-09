@@ -12,6 +12,18 @@ apply plugin: 'com.android.application'
 
 // Custom definitions may go here
 
+// Hardware-independent tests (real Ivy scheduler, mocked hardware). JUnit is not in the offline Gradle cache, so the
+// suites run through a small runner; this task just wraps scripts/run_tests.sh so it is available from Android Studio:
+//   ./gradlew :TeamCode:hostTests                       (all suites)
+//   ./gradlew :TeamCode:hostTests -Psuites="turret ivy"  (selected suites; see scripts/run_tests.sh --list)
+tasks.register('hostTests', Exec) {
+    group = 'verification'
+    description = 'Runs the hardware-independent test suites (simulation only)'
+    workingDir = rootProject.projectDir
+    def suites = project.hasProperty('suites') ? project.property('suites').toString().split(' ').toList() : []
+    commandLine(['bash', 'scripts/run_tests.sh'] + suites)
+}
+
 // Include common definitions from above.
 apply from: '../build.common.gradle'
 apply from: '../build.dependencies.gradle'

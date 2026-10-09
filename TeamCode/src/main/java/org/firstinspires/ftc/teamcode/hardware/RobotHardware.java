@@ -51,6 +51,12 @@ public class RobotHardware {
         this.hardwareMap = hwMap;
         Storage.invalidateHardwareState();
 
+        // Accepted calibration (if any) overrides the compiled defaults. An invalid file is ignored as a whole.
+        java.util.List<String> cfgProblems = org.firstinspires.ftc.teamcode.tuning.Tuning.applyActive(
+                org.firstinspires.ftc.teamcode.tuning.Tuning.robotDir(
+                        org.firstinspires.ftc.robotcore.internal.system.AppUtil.FIRST_FOLDER));
+        if (!cfgProblems.isEmpty()) Storage.reportFailure("Config", String.join("; ", cfgProblems));
+
         // 1. Initialize Pedro Pathing
         follower = Constants.create(hardwareMap);
         follower.setPose(new Pose(x,y,theta));

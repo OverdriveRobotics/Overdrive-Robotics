@@ -1,0 +1,12 @@
+Turret calibration checklist (NOT a loadable file - the tools never read *.TEMPLATE.txt).
+Fill these with MEASURED values using the "CAL Turret" OpMode, then let the tool write the candidate for you.
+The interlock turret.HARDWARE_CONFIGURED=1 is only accepted when ALL of these are present in the configuration:
+
+  turret.SHAFT_TICKS_PER_REV         encoder ticks per rev of the shaft the datasheet numbers below describe   [datasheet]
+  turret.SHAFT_REVS_PER_TURRET_REV   EXTERNAL reduction only                                                    [CAL Turret #2]
+  turret.ENCODER_SIGN                +1 / -1                                                                     [CAL Turret #1]
+  turret.MIN_ANGLE_RAD, MAX_ANGLE_RAD  hard stops pulled in by 5 deg                                             [CAL Turret #3]
+  turret.SHAFT_FREE_SPEED_RAD_S, SHAFT_STALL_TORQUE_NM, STALL_CURRENT_A                                         [motor datasheet]
+  turret.LOAD_INERTIA_KG_M2, VISCOUS_FRICTION                                                                    [CAL Turret #5 or CAD]
+
+Also needed before robot.REQUIRE_TURRET_ALIGNED=1: at least one target point (target.A_X/A_Y or B_X/B_Y)               [CAL Localization #5]
