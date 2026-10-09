@@ -10,8 +10,14 @@ public class commands {
     /**
      * Raises the arm to a specified encoder position using PID
      */
-    public static Command raiseArmTo(RobotHardware robot, double targetPosition) {
+    public static Command rampfly(RobotHardware robot, double targetPosition) {
         return Command.build()
+
+
+
+
+
+
     }
 
 }
